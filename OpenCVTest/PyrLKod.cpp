@@ -25,7 +25,7 @@ static int rdpoints = 0;
 static Mat K;
 static vector<Point2f> points1, points2, init, reprojected;
 // first 3d triangulated points
-static vector<Point3f> init3dpoints;
+static vector<Point3f> init3dpoints, c3dpoints;
 static vector<Mat> keyframes;
 
 static TermCriteria termcrit(TermCriteria::COUNT | TermCriteria::EPS, 200, 0.03);
@@ -40,10 +40,19 @@ static Mat triOut;
 static Mat ctriout;
 static Mat sH = Mat::eye(3, 3, CV_64F);
 static Mat M0 = Mat::eye(3, 4, CV_64F);
+static Mat M1;
+
 static Mat poseplot = Mat::zeros(480, 640, CV_8UC3);
 static Mat totalT = Mat::zeros(3, 1, CV_64F);
+// current rotation
 static Mat R;
+// current translation
 static Mat T;
+// current camera matrix
+static Mat cM;
+// current base cm all keyframe multiplied
+static Mat ckM;
+
 static Mat W;
 static Mat mask;
 static VideoCapture stream1(0);   //0 is the id of video device.0 if you have only one camera.
@@ -54,18 +63,18 @@ static vector<float> err;
 void convertFromHom(Mat tri, vector<Point3f> *points3d)
 {
 	points3d->clear();
-	for (int i = 0; i < triOut.cols; i++) {
-		float s = triOut.at<float>(3, i);
-		float x = triOut.at<float>(0, i) / s;
-		float y = triOut.at<float>(1, i) / s;
-		float z = triOut.at<float>(2, i) / s;
+	for (int i = 0; i < tri.cols; i++) {
+		float s = tri.at<float>(3, i);
+		float x = tri.at<float>(0, i) / s;
+		float y = tri.at<float>(1, i) / s;
+		float z = tri.at<float>(2, i) / s;
 		points3d->push_back(Point3f(x, y, z));
 	}
 }
 
-void triangulate_points(Mat M0, Mat M1, vector<Point2f> points1, vector<Point2f> points2, vector<Point3f> *points3d)
+void triangulate_points(Mat CM0, Mat CM1, vector<Point2f> poi1, vector<Point2f> poi2, vector<Point3f> *points3d)
 {
-	triangulatePoints(M0, M1, init, points2, triOut);
+	triangulatePoints(CM0, CM1, poi1, poi2, triOut);
 	printf("row: %d, col: %d\n", triOut.rows, triOut.cols);
 	convertFromHom(triOut, points3d);
 }
@@ -86,12 +95,20 @@ void loop() {
 			points2[k] = points2[i];
 			points1[k] = points1[i];
 			init[k] = init[i];
+
+			if(rdpoints){
+				init3dpoints[k] = init3dpoints[i];
+			}
 			k++;
-			circle(frame, points2[i], 3, Scalar(0, 255, 0), -1, 8);
+			circle(frame, points2[i], 2, Scalar(0, 255, 0), -1, 8);
+			if (!rdpoints){
+				line(frame, init[i], points2[i], Scalar(0, 255, 0));
+			}
 		}
 		points1.resize(k);
 		points2.resize(k);
 		init.resize(k);
+		init3dpoints.resize(k);
 	}
 
 	if (points1.size() > 8) {
@@ -100,7 +117,7 @@ void loop() {
 
 		Point2f pp(K.at<double>(0, 2), K.at<double>(1, 2));
 
-		Mat E = findEssentialMat(init, points2, f, pp, RANSAC, 0.99, 2.0, mask);
+		Mat E = findEssentialMat(init, points2, f, pp, RANSAC, 0.99, 1.0, mask);
 		// save E for previous and calculate current from prev N translations.
 
 		int inliers = recoverPose(E, init, points2, R, T, f, pp);
@@ -123,19 +140,39 @@ void loop() {
 			points2[k] = points2[i];
 			points1[k] = points1[i];
 			init[k] = init[i];
-			k++;
+
 			//circle(frame, points2[i], 3, Scalar(0, 255, 0), -1, 8);
 			if (!rdpoints){
 				line(frame, init[i], points2[i], Scalar(0, 255, 0));
 			}
+			else{
+				init3dpoints[k] = init3dpoints[i];
+			}
+			k++;
+
 		}
 		points1.resize(k);
 		points2.resize(k);
 		init.resize(k);
+		init3dpoints.resize(k); 
 
 		// comapre solution to pnp pose solution.
+		// poseplot.setTo(cv::Scalar(0, 0, 0));
 
-		//poseplot.setTo(cv::Scalar(0, 0, 0));
+		hconcat(R, T, cM);
+		triangulate_points(K*M0, K*cM, init, points2, &c3dpoints);
+		float scale = 0;
+		int div = 0;
+		for (int i = 0; i < init3dpoints.size() - 1; i++) {
+			float nor1 = norm(c3dpoints[i] - c3dpoints[i + 1]);
+			float nor2 = norm(init3dpoints[i] - init3dpoints[i + 1]);
+			if (nor1 > 0.1 && nor2 > 0.1) {
+				div++;
+				scale = scale + (nor2 / nor1);
+			}
+		}
+		scale = scale / div;
+		printf("%.2f\n", scale);
 
 		char buff1[50];
 		sprintf(buff1, "%+.2f %+.2f %+.2f", R.at<double>(0, 1), R.at<double>(1, 0), R.at<double>(0, 2));
@@ -143,12 +180,11 @@ void loop() {
 		double fontScale = 0.5f;
 		int thickness = 1;
 		string text(buff1);
+		print(T);
 
 		putText(poseplot, text, Point(0, 20), fontFace, fontScale, Scalar::all(255), thickness, 8);
-
 		//printf("x: %.2f y: %.2f z: %.2f\n", TT.at<double>(0, 0), TT.at<double>(1, 0), TT.at<double>(2, 0));
-		//circle(poseplot, Point(200 + totalT.at<double>(0, 0), 200 + totalT.at<double>(1, 0)), 2, Scalar(0, 255, 0));
-
+		circle(poseplot, Point(200 + T.at<double>(0, 0) * 2 * scale, 200 + T.at<double>(1, 0) * 2 * scale), 2, Scalar(0, 255, 0));
 		//printf("%d\n",t.size());
 	}
 
@@ -166,7 +202,6 @@ void loop() {
 			// calculate ||P11-P12|| / ||P21 - P22|| as a scale ratio between initialization and current essential matrix
 			// read about keyframes.
 
-			Mat M1;
 			hconcat(R, T, M1);
 
 			triangulate_points(K*M0, K*M1, init, points2, &init3dpoints);
@@ -179,10 +214,10 @@ void loop() {
 			Mat fT = Mat::zeros(3, 1, CV_64F);
 			projectPoints(init3dpoints, rR, fT, K, noArray(), reprojected);
 			for (int i = 0; i < reprojected.size(); i++) {
-				printf("(%f, %f)\n", reprojected[i].x, reprojected[i].y);
-				circle(poseplot, Point2f(init[i].x, init[i].y), 3, Scalar(255, 0, 0));
-				circle(poseplot, Point2f(points2[i].x, points2[i].y), 3, Scalar(0, 0, 255));
-				circle(poseplot, Point2f(reprojected[i].x, reprojected[i].y), 1, Scalar(0, 255, 0));
+				//printf("(%f, %f)\n", reprojected[i].x, reprojected[i].y);
+				//circle(poseplot, Point2f(init[i].x, init[i].y), 3, Scalar(255, 0, 0));
+				//circle(poseplot, Point2f(points2[i].x, points2[i].y), 3, Scalar(0, 0, 255));
+				//circle(poseplot, Point2f(reprojected[i].x, reprojected[i].y), 1, Scalar(0, 255, 0));
 			}
 		}
 	}
@@ -190,10 +225,11 @@ void loop() {
 	std::swap(points2, points1);
 	cv::swap(prevGray, grey);
 
-	if (key == ' ') {
+	if (key == ' ' && !rdpoints) {
 		started = 1;
 		// features and keypoints for object
 		img1 = grey.clone();
+		keyframes.push_back(img1);
 		kpts1.clear();
 		init.clear();
 		goodFeaturesToTrack(img1, points1, MAX_FEATURES, 0.01, 20, Mat(), 3, 0, 0.04);
