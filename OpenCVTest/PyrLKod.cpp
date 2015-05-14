@@ -32,6 +32,7 @@ static TermCriteria termcrit(TermCriteria::COUNT | TermCriteria::EPS, 200, 0.03)
 static Size subPixWinSize(10, 10);
 static Size winSize(15, 15); // 31
 
+static int frames = 0;
 static Mat img1;
 static Mat grey;
 static Mat frame, img_matches;
@@ -108,117 +109,44 @@ void loop() {
 		points1.resize(k);
 		points2.resize(k);
 		init.resize(k);
-		init3dpoints.resize(k);
+		if (rdpoints) {
+			init3dpoints.resize(k);
+		}
 	}
 
 	if (points1.size() > 8) {
-
-		float f = K.at<double>(0, 0);
-
-		Point2f pp(K.at<double>(0, 2), K.at<double>(1, 2));
-
-		Mat E = findEssentialMat(init, points2, f, pp, RANSAC, 0.99, 1.0, mask);
-		// save E for previous and calculate current from prev N translations.
-
-		int inliers = recoverPose(E, init, points2, R, T, f, pp);
-		// construct cameramatrix and multiply for each keyframefinding the total translation.
-		// maybe look at bundle adjustment ad run it in other thread between keyframe translations.
-
-		// try to compile viz again and use it to plot 3d point cloud.
-
-		//printf("recoverPose inliers: %d\n", inliers);
-		//W = [0 1 0; -1 0 0; 0 0 1];
-
-		//printf("x: %.2f y: %.2f z: %.2f\n", T.at<double>(0, 0), T.at<double>(1, 0), T.at<double>(2, 0));
 		totalT = totalT + T;
-		// remove outliers
-		//Put into a function and add 3d points
-		size_t k;
-		for (size_t i = k = 0; i < mask.rows; i++) {
-			if (!(int)mask.at<uchar>(i, 0))
-				continue;
-			points2[k] = points2[i];
-			points1[k] = points1[i];
-			init[k] = init[i];
 
-			//circle(frame, points2[i], 3, Scalar(0, 255, 0), -1, 8);
-			if (!rdpoints){
-				line(frame, init[i], points2[i], Scalar(0, 255, 0));
-			}
-			else{
-				init3dpoints[k] = init3dpoints[i];
-			}
-			k++;
-
-		}
-		points1.resize(k);
-		points2.resize(k);
-		init.resize(k);
-		init3dpoints.resize(k); 
-
-		// comapre solution to pnp pose solution.
-		// poseplot.setTo(cv::Scalar(0, 0, 0));
-
-		hconcat(R, T, cM);
-		triangulate_points(K*M0, K*cM, init, points2, &c3dpoints);
+		cv::Mat rvec(3, 1, cv::DataType<double>::type);
+		cv::Mat tvec(3, 1, cv::DataType<double>::type);
 		float scale = 0;
-		int div = 0;
-		for (int i = 0; i < init3dpoints.size() - 1; i++) {
-			float nor1 = norm(c3dpoints[i] - c3dpoints[i + 1]);
-			float nor2 = norm(init3dpoints[i] - init3dpoints[i + 1]);
-			if (nor1 > 0.1 && nor2 > 0.1) {
-				div++;
-				scale = scale + (nor2 / nor1);
+		if (init3dpoints.size() > 0) {
+			solvePnPRansac(init3dpoints, points2, K, noArray(), rvec, tvec, false, 200,4);
+			frames++;
+			T = T + tvec;
+			if (frames == 3) {
+				T = T / 3;
+				circle(poseplot, Point(200 + T.at<double>(0, 0) * 100, 200 + T.at<double>(1, 0) * 100), 2, Scalar(0, 255, 0));
+				T = Mat::zeros(3, 1, CV_64F);
+				frames = 0;
 			}
 		}
-		scale = scale / div;
-		printf("%.2f\n", scale);
-
-		char buff1[50];
-		sprintf(buff1, "%+.2f %+.2f %+.2f", R.at<double>(0, 1), R.at<double>(1, 0), R.at<double>(0, 2));
-		int fontFace = QT_FONT_NORMAL;
-		double fontScale = 0.5f;
-		int thickness = 1;
-		string text(buff1);
-		print(T);
-
-		putText(poseplot, text, Point(0, 20), fontFace, fontScale, Scalar::all(255), thickness, 8);
-		//printf("x: %.2f y: %.2f z: %.2f\n", TT.at<double>(0, 0), TT.at<double>(1, 0), TT.at<double>(2, 0));
-		circle(poseplot, Point(200 + T.at<double>(0, 0) * 2 * scale, 200 + T.at<double>(1, 0) * 2 * scale), 2, Scalar(0, 255, 0));
-		//printf("%d\n",t.size());
 	}
 
-	//kpts2.clear();
-	//kpts1.clear();
 	imshow("cam", frame);
 
 	int key = waitKey(15);
-	//points1.size() < initPoints / 2 ||
 
 	if (key == ' ') {
 		if (started && !rdpoints) {
 			rdpoints = 1;
-			// move to triangulate function
-			// calculate ||P11-P12|| / ||P21 - P22|| as a scale ratio between initialization and current essential matrix
-			// read about keyframes.
-
+			float f = K.at<double>(0, 0);
+			Point2f pp(K.at<double>(0, 2), K.at<double>(1, 2));
+			Mat E = findEssentialMat(init, points2, f, pp, RANSAC, 0.99, 1.0, mask);
+			int inliers = recoverPose(E, init, points2, R, T, f, pp);
 			hconcat(R, T, M1);
-
 			triangulate_points(K*M0, K*M1, init, points2, &init3dpoints);
 
-			Mat rR;
-			Rodrigues(R, rR);
-			Mat fR = Mat::eye(3, 3, CV_64F);
-
-			Rodrigues(fR, rR);
-			Mat fT = Mat::zeros(3, 1, CV_64F);
-			projectPoints(init3dpoints, rR, fT, K, noArray(), reprojected);
-			for (int i = 0; i < reprojected.size(); i++) {
-				//printf("(%f, %f)\n", reprojected[i].x, reprojected[i].y);
-				//circle(poseplot, Point2f(init[i].x, init[i].y), 3, Scalar(255, 0, 0));
-				//circle(poseplot, Point2f(points2[i].x, points2[i].y), 3, Scalar(0, 0, 255));
-				//circle(poseplot, Point2f(reprojected[i].x, reprojected[i].y), 1, Scalar(0, 255, 0));
-			}
 		}
 	}
 
@@ -232,7 +160,7 @@ void loop() {
 		keyframes.push_back(img1);
 		kpts1.clear();
 		init.clear();
-		goodFeaturesToTrack(img1, points1, MAX_FEATURES, 0.01, 20, Mat(), 3, 0, 0.04);
+		goodFeaturesToTrack(img1, points1, MAX_FEATURES, 0.01, 15, Mat(), 3, 0, 0.04);
 		//cornerSubPix(img1, points1, subPixWinSize, Size(-1, -1), termcrit);
 		for (size_t i = 0; i < points1.size(); i++) {
 			kpts1.push_back(cv::KeyPoint(points1[i], 1.f));
