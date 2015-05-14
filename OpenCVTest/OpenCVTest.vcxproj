@@ -82,8 +82,10 @@
   <ItemGroup>
     <ClCompile Include="main.cpp" />
     <ClCompile Include="OrbTest.cpp" />
+    <ClCompile Include="PNPOrb.cpp" />
     <ClCompile Include="PyrLKod.cpp" />
     <ClCompile Include="PyrLkTest.cpp" />
+    <ClCompile Include="VOEssential.cpp" />
   </ItemGroup>
   <ItemGroup>
     <ClInclude Include="Tests.h" />

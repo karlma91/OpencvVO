@@ -6,6 +6,7 @@
 int RunOrb();
 int PyrLKTest();
 int PyrLKod();
+int PNPOrb();
 
 #endif 
 
