@@ -4,5 +4,6 @@
 int main() {
 	//PyrLKTest();
 	//RunOrb();
-	PyrLKod();
+  PyrLKod();
+  //      cameraPose();
 }
