@@ -8,10 +8,11 @@ using namespace cv;
 using namespace std;
 #include <iostream>
 #include <vector>
+#include <opencv2/viz/vizcore.hpp>
 #include <opencv2/viz.hpp>
 #include "Tests.h"
 
-static int MAX_FEATURES = 300;
+static int MAX_FEATURES = 2000;
 static vector<KeyPoint> kpts1, kpts2;
 static std::vector<DMatch> matches;
 static Mat desc1, desc2;
@@ -25,7 +26,10 @@ static Mat K;
 static vector<Point2f> points1, points2, init, reprojected;
 // first 3d triangulated points
 static vector<Point3f> init3dpoints, c3dpoints;
+static vector<Point3f> camposes, totalmap;
 static vector<Mat> keyframes;
+static vector<viz::Color> colors;
+
 
 static TermCriteria termcrit(TermCriteria::COUNT | TermCriteria::EPS, 200, 0.03);
 static Size subPixWinSize(10, 10);
@@ -54,7 +58,9 @@ static Mat ckM;
 
 static Mat W;
 static Mat mask;
-static VideoCapture stream1(0);   //0 is the id of video device.0 if you have only one camera.
+static Mat pointcloud(0,0,CV_64FC3);
+static Mat allColors(0, 0, CV_8UC3);
+static VideoCapture stream1("C:\\Users\\Karlmka\\Dropbox\\unik4690\\20150515_172609.mp4");   //0 is the id of video device.0 if you have only one camera.
 
 static vector<uchar> status;
 static vector<float> err;
@@ -67,6 +73,10 @@ static Ptr<FastFeatureDetector> detector = FastFeatureDetector::create();
 //Ptr<FastFeatureDetector> fast = FastFeatureDetector::create();
 
 static BFMatcher matcher(NORM_HAMMING);
+
+/// Create a window
+static viz::Viz3d myWindow("VIZ");
+
 
 static void convertFromHom(Mat tri, vector<Point3f> *points3d)
 {
@@ -88,6 +98,7 @@ static void triangulate_points(Mat CM0, Mat CM1, vector<Point2f> poi1, vector<Po
 }
 
 static void loop() {
+	stream1.read(frame);
 	stream1.read(frame);
 	//resize(frame, frame, Size(frame.cols*0.8, frame.rows*0.8));
 	cvtColor(frame, grey, COLOR_BGR2GRAY);
@@ -125,11 +136,11 @@ static void loop() {
 					if (dist > max_dist) max_dist = dist;
 				}
 				avg_dist = avg_dist / good_matches.size();
-				int k = 0;
+				/*int k = 0;
 				for (int i = 0; i < init.size(); i++) {
 					double dist = norm(init[i] - points2[i]);
 					//printf("%f\n", dist);
-					if (dist > avg_dist){
+					if (dist > avg_dist*2){
 						continue;
 					}
 					points2[k] = points2[i];
@@ -137,39 +148,62 @@ static void loop() {
 					k++;
 				}
 				points2.resize(k);
-				init.resize(k);
+				init.resize(k);*/
 
 				if (good_matches.size() > 10 && init.size() > 6) {
 
 					float f = K.at<double>(0, 0);
 					Point2f pp(K.at<double>(0, 2), K.at<double>(1, 2));
-					E = findEssentialMat(init, points2, f, pp, RANSAC, 0.999, 1.0, mask);
+					E = findEssentialMat(init, points2, f, pp, RANSAC, 0.995, 2.0, mask);
 					int inliers = recoverPose(E, init, points2, R, T, f, pp, mask);
-					if (inliers > 10){
-						printf("%d\n", inliers);
+					if (inliers > 5){
 						hconcat(R, T, M1);
+
+
 						cv::Mat row = cv::Mat::zeros(1, 4, CV_64F);
 						row.at<double>(0, 3) = 1;
 						M1.push_back(row);
 						//print(M1);
 						totalT = totalT*M1;
+						Point3f TTT(totalT.at<double>(0, 3), totalT.at<double>(1, 3), totalT.at<double>(2, 3));
+
+						vector<Point2f> ny1, ny2;
+						for (int i = 0; i < mask.rows; i++)
+						{
+							if ((int)mask.at<uchar>(i, 0) && (norm(init[i] - points2[i]) > 3)){
+								ny1.push_back(init[i]);
+								ny2.push_back(points2[i]);
+								
+							}
+						}
+						if (ny1.size() > 0){
+							hconcat(R, T, M1);
+							triangulate_points(K*M0, K*M1, ny1, ny2, &init3dpoints);
+							for (int i = 0; i < (int)init3dpoints.size(); i++) {
+								if (norm(init3dpoints[i]) < 50) {
+									Mat gt(init3dpoints[i]);
+									gt.convertTo(gt, CV_64F);
+									Mat r2 = cv::Mat::zeros(1, 1, CV_64F);
+									gt.push_back(r2);
+									R.convertTo(R, CV_64F);
+									Mat rot1 = -totalT*gt;
+									Point3f gr(rot1.at<double>(0, 0), rot1.at<double>(1, 0), rot1.at<double>(2, 0));
+									totalmap.push_back(TTT + gr);
+									transpose(gt, gt);
+									pointcloud.push_back(gt.colRange(0,3));
+									Vec3b col = frame.at<Vec3b>(points2[i].y, points2[i].x);
+									allColors.push_back(col);
+								}
+							}
+						}
+
+						camposes.push_back(Point3f(totalT.at<double>(0, 3), totalT.at<double>(1, 3), totalT.at<double>(2, 3)));
+						//camposes.push_back(Point3f(totalT.at<double>(1, 3), totalT.at<double>(2, 3), 0));
 
 						Mat rot;
 						totalT(cv::Range(0, 3), cv::Range(0, 3)).copyTo(rot);
 						Mat rotv;
 						Rodrigues(rot, rotv);
-						poseplot(Range(0, 100), Range(0, 300)) = 0;
-
-						char buff1[50];
-						int fontFace = QT_FONT_NORMAL;
-						double fontScale = 0.5f;
-						int thickness = 1;
-						sprintf(buff1, "x:%+.1f y:%+.1f z:%+.1f", rotv.at<double>(0, 0) * (180 / CV_PI),
-							(rotv.at<double>(1, 0) / CV_PI) * 180, (rotv.at<double>(2, 0) / CV_PI) * 180);
-						string text(buff1);
-						putText(poseplot, text, Point(0, 20), fontFace, fontScale, Scalar::all(255), thickness, 8);
-
-						circle(poseplot, Point(100 + totalT.at<double>(0, 3) * 3, 100 + totalT.at<double>(1, 3)) * 3, 2, Scalar(0, 255, 0));
 
 						kpts1.clear();
 						for (int i = 0; i < kpts2.size(); i++) {
@@ -183,7 +217,7 @@ static void loop() {
 		}
 	}
 	if (mask.rows > 0) {
-		for (size_t i = 0; i < min(init.size(), points2.size()); i++) {
+		for (size_t i = 0; i < min((int)min(init.size(), points2.size()), mask.rows); i++) {
 			circle(frame, init[i], 2, Scalar(0, 255, 0));
 			if ((int)mask.at<uchar>(i, 0)) {
 				line(frame, init[i], points2[i], Scalar(0, 255, 0));
@@ -195,7 +229,7 @@ static void loop() {
 	}
 	imshow("cam", frame);
 
-	int key = waitKey(15);
+	int key = waitKey(1);
 	if (key == ' ' || kpts1.size() < 40) {
 		started = 1;
 		kpts1.clear();
@@ -203,14 +237,23 @@ static void loop() {
 		cv::KeyPointsFilter::retainBest(kpts1, MAX_FEATURES);
 		descriptor->compute(grey, kpts1, desc1);
 		KeyPoint::convert(kpts1, points1);
-		poseplot.setTo(cv::Scalar(0, 0, 0));
 		totalT = Mat::eye(4, 4, CV_64F);
 		grey.copyTo(prevGray);
 	}
 	else if (key == 'q') {
 		return;
 	}
-	imshow("pose", poseplot);
+	if (camposes.size() > 0) {
+		viz::WCloud cw(camposes);
+		Mat testt(totalmap);
+		viz::WCloud cws(testt, allColors);
+		cw.setRenderingProperty(viz::POINT_SIZE, 5);
+		cws.setRenderingProperty(viz::POINT_SIZE, 3);
+		myWindow.showWidget("CloudWidget1", cw);
+		myWindow.showWidget("CloudWidget2", cws);
+	}
+
+	myWindow.spinOnce(1, true);
 }
 
 int KFVOOrb() {
@@ -228,6 +271,9 @@ int KFVOOrb() {
 	//detector = ORB::create();
 	//detector->setMaxFeatures(1000);
 	descriptor = ORB::create();
+
+	/// Add coordinate axes
+	myWindow.showWidget("Coordinate Widget", viz::WCoordinateSystem());;
 
 	while (true) {
 		loop();

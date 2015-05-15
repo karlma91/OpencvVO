@@ -134,14 +134,16 @@ void loop() {
     float scale = 0;
     if (init3dpoints.size() > 0) {
       solvePnPRansac(init3dpoints, points2, K, noArray(), rvec, tvec, false, 200,4);
-      frames++;
+      T = tvec;
+      Rodrigues(rvec, R);
+      /*frames++;
       T = T + tvec;
       if (frames == 3) {
         T = T / 3;
         circle(poseplot, Point(200 + T.at<double>(0, 0) * 100, 200 + T.at<double>(1, 0) * 100), 2, Scalar(0, 255, 0));
         T = Mat::zeros(3, 1, CV_64F);
         frames = 0;
-      }
+      }*/
     }
   }
 
@@ -158,7 +160,10 @@ void loop() {
       int inliers = recoverPose(E, init, points2, R, T, f, pp);
       hconcat(R, T, M1);
       triangulate_points(K*M0, K*M1, init, points2, &init3dpoints);
-
+      c3dpoints.clear();
+      for (int i = 0; i < init3dpoints.size(); i++) {
+          c3dpoints.push_back(init3dpoints[i]/10);
+      }
     }
   }
 
@@ -186,7 +191,9 @@ void loop() {
 
   // Plot 3D points
   if (!init3dpoints.empty()) {
-    viz::WCloud cw(init3dpoints);
+
+    viz::WCloud cw(c3dpoints);
+    cw.setRenderingProperty(viz::POINT_SIZE, 5);
     myWindow.showWidget("CloudWidget", cw);
     /// Let's assume camera has the following properties
     //double sz[3] = {0,0,-1};
@@ -232,7 +239,7 @@ void loop() {
 
 int PyrLKod() {
   //TODO move to function readcameramatrix
-	
+    
 
   if (!stream1.isOpened()) { //check if video device has been initialised
     cout << "cannot open camera";
