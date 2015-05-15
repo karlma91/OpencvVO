@@ -5,5 +5,7 @@ int main() {
 	//PyrLKTest();
 	//RunOrb();
 	//PyrLKod();
-	PNPOrb();
+	//PNPOrb();
+	//VOOrb();
+	KFVOOrb();
 }

@@ -33,6 +33,12 @@
     <ClCompile Include="PNPOrb.cpp">
       <Filter>Source Files</Filter>
     </ClCompile>
+    <ClCompile Include="VOOrb.cpp">
+      <Filter>Source Files</Filter>
+    </ClCompile>
+    <ClCompile Include="KFVOORB.cpp">
+      <Filter>Source Files</Filter>
+    </ClCompile>
   </ItemGroup>
   <ItemGroup>
     <ClInclude Include="Tests.h">

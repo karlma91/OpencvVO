@@ -7,6 +7,8 @@ int RunOrb();
 int PyrLKTest();
 int PyrLKod();
 int PNPOrb();
+int VOOrb();
+int KFVOOrb();
 
 #endif 
 
