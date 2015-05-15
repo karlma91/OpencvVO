@@ -4,6 +4,7 @@
 int main() {
 	//PyrLKTest();
 	//RunOrb();
+  //      cameraPose();
 	//PyrLKod();
 	//PNPOrb();
 	//VOOrb();
