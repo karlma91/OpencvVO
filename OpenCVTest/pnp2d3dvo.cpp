@@ -12,7 +12,7 @@ using namespace std;
 #include <opencv2/viz.hpp>
 #include "Tests.h"
 
-static int MAX_FEATURES = 1000;
+static int MAX_FEATURES = 10000;
 static vector<KeyPoint> kpts1, kpts2, kpts3, fkpts;
 static std::vector<DMatch> matches;
 std::vector< DMatch > good_matches;
@@ -55,14 +55,13 @@ static vector<uchar> status;
 static vector<float> err;
 // essential matrix
 static Mat E;
-//static Ptr<ORB> detector;
+//static Ptr<ORB> detector = ORB::create();
 static Ptr<ORB> descriptor;
 static Ptr<FastFeatureDetector> detector = FastFeatureDetector::create();
 static BFMatcher matcher(NORM_HAMMING);
 
 /// Create a window
 static viz::Viz3d myWindow("VIZ");
-
 
 static void convertFromHom(Mat tri, vector<Point3f> *points3d)
 {
@@ -102,43 +101,48 @@ static void take_first_frame(vector<KeyPoint> kp1, Mat desc1, Mat grey)
 }
 
 static void just_match(vector<KeyPoint> kp1, Mat des1, vector<KeyPoint> kp2, Mat des2, Mat grey) {
-
-	if (des2.cols > 5) {
+	if (des2.cols > 0 && des1.cols > 0) {
 		matcher.match(des1, des2, matches);
 		if (matches.size() > 5) {
 			double max_dist = 0; double min_dist = 1000;
 			matched1.clear();
 			matched2.clear();
 			good_matches.clear();
+			float avg_dist = 0;
 			for (int i = 0; i < matches.size(); i++) {
 				if (matches[i].distance < 20) {
 					good_matches.push_back(matches[i]);
 					matched1.push_back(kp1[matches[i].queryIdx]);
 					matched2.push_back(kp2[matches[i].trainIdx]);
+					avg_dist += norm(matched1[matched1.size() - 1].pt - matched2[matched2.size() - 1].pt);
 					if (init3dpoints.size()>0) {
 						temp3d.push_back(init3dpoints[matches[i].queryIdx]);
 					}
 				}
 			}
+			avg_dist = avg_dist / matched1.size();
+			float f = K.at<double>(0, 0);
+			Point2f pp(K.at<double>(0, 2), K.at<double>(1, 2));
+			//vector<Point2f> tt1, tt2;
+			//KeyPoint::convert(matched1, tt1);
+			//KeyPoint::convert(matched2, tt2);
+			//E = findEssentialMat(tt1, tt2, f, pp, RANSAC, 0.995, 2.0, mask);
+			/*int k = 0;
+			for (int i = 0; i < matched1.size(); i++){
+				if (norm(matched1[i].pt - matched2[i].pt) < avg_dist * 2){
+					matched1[k] = matched1[i];
+					matched2[k] = matched2[i];
 
-			/*if (init3dpoints.size()>0){
-				float f = K.at<double>(0, 0);
-				Point2f pp(K.at<double>(0, 2), K.at<double>(1, 2));
-				vector<Point2f> tt1, tt2;
-				KeyPoint::convert(matched1, tt1);
-				KeyPoint::convert(matched2, tt2);
-				E = findEssentialMat(tt1, tt2, f, pp, RANSAC, 0.995, 2.0, mask);
-				int k = 0;
-				for (int i = 0; i < mask.rows; i++){
-					if ((int)mask.at<uchar>(i, 0)){
-						matched1[k] = matched1[i];
-						matched2[k] = matched2[i];
-						temp3d[k] = temp3d[k];
-						k++;
+					if (init3dpoints.size() > 0){
+						temp3d[k] = temp3d[i];
 					}
+					k++;
 				}
-				matched1.resize(k);
-				matched2.resize(k);
+			}
+			matched1.resize(k);
+			matched2.resize(k);
+
+			if (init3dpoints.size() > 0){
 				temp3d.resize(k);
 			}*/
 		}
@@ -152,7 +156,7 @@ static void take_second_frame_and_triangulate(vector<KeyPoint> kp1, Mat des1, ve
 		Point2f pp(K.at<double>(0, 2), K.at<double>(1, 2));
 		KeyPoint::convert(matched1, points1);
 		KeyPoint::convert(matched2, points2);
-		E = findEssentialMat(points1, points2, f, pp, RANSAC, 0.995, 2.0, mask);
+		E = findEssentialMat(points1, points2, f, pp, RANSAC, 0.99, 2.0, mask);
 		int inliers = recoverPose(E, points1, points2, R, T, f, pp, mask);
 		if (inliers > 10){
 			hconcat(R, T, M1);
@@ -161,7 +165,7 @@ static void take_second_frame_and_triangulate(vector<KeyPoint> kp1, Mat des1, ve
 			vector<Point2f> ny1, ny2;
 			for (int i = 0; i < mask.rows; i++)
 			{
-				if ((int)mask.at<uchar>(i, 0) && (norm(points1[i] - points2[i]) > 3)){
+				if ((int)mask.at<uchar>(i, 0)){
 					ny1.push_back(points1[i]);
 					ny2.push_back(points2[i]);
 					fkpts.push_back(matched2[i]);
@@ -170,12 +174,11 @@ static void take_second_frame_and_triangulate(vector<KeyPoint> kp1, Mat des1, ve
 			descriptor->compute(grey, fkpts, fdesc);
 			triangulate_points(K*M0, K*M1, ny1, ny2, &init3dpoints);
 			for (int i = 0; i < (int)init3dpoints.size(); i++) {
-				Vec3b col = colors.at<Vec3b>(points2[i].y, points2[i].x);
+				Vec3b col = frame.at<Vec3b>(points1[i].y, points1[i].x);
 				allColors.push_back(col);
 			}
 			second_frame_taken = 1;
 			return;
-
 		}
 	}
 	printf("Bad initialisation redo\n");
@@ -206,7 +209,7 @@ static void update()
 		Mat tvec(3, 1, DataType<double>::type);
 		KeyPoint::convert(matched1, tt1);
 		KeyPoint::convert(matched2, tt2);
-		solvePnPRansac(temp3d, tt2, K, noArray(), rvec, tvec, false, 100, 8);
+		solvePnPRansac(temp3d, tt2, K, noArray(), rvec, tvec, false, 200, 8, 0.9);
 		T = tvec;
 		Rodrigues(rvec, R);
 	}
@@ -278,7 +281,7 @@ int pnp2d3d() {
 		cout << "cannot open camera";
 	}
 	// read camera matrix
-	FileStorage fs("C:/Users/Karlmka/Dropbox/unik4690/Kamerakalibrering/camera.yml", FileStorage::READ);
+	FileStorage fs("C:/Users/Karlmka/Dropbox/unik4690/Kamerakalibrering/camera2.yml", FileStorage::READ);
 	fs["camera_matrix"] >> K;
 	fs.release();
 	printf("K matrix: \n");

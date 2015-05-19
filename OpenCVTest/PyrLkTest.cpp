@@ -6,6 +6,8 @@
 #include <opencv2/core.hpp>
 #include <vector>
 #include <iostream>
+#include <opencv2/viz/vizcore.hpp>
+#include <opencv2/viz.hpp>
 #include "Tests.h"
 
 using namespace cv;
@@ -59,6 +61,7 @@ int PyrLKTest() {
 
 	Mat K;
 
+	static viz::Viz3d myWindow("VIZ");
 
 	VideoCapture stream1(0);   //0 is the id of video device.0 if you have only one camera.
 
@@ -75,14 +78,17 @@ int PyrLKTest() {
 	TermCriteria termcrit(TermCriteria::COUNT | TermCriteria::EPS, 200, 0.03);
 	Size subPixWinSize(10, 10);
 	Size winSize(15, 15); // 31
-
+	Mat TT,RR;
 	Mat poseplot = Mat::zeros(400, 400, CV_8UC3);
+
+
+	myWindow.showWidget("Coordinate Widget", viz::WCoordinateSystem());
 	//unconditional loop
 	while (true) {
 
 		stream1.read(frame);
 		//resize(frame, frame, Size(frame.cols*0.8, frame.rows*0.8));
-		cvtColor(frame, grey, COLOR_BGR2GRAY);		
+		cvtColor(frame, grey, COLOR_BGR2GRAY);
 
 		vector<uchar> status;
 		vector<float> err;
@@ -104,7 +110,7 @@ int PyrLKTest() {
 				k++;
 				//kpts1.push_back(KeyPoint(points1[i], 1.f));
 				//kpts2.push_back(KeyPoint(points2[i], 1.f));
-				
+
 				circle(frame, points2[i], 3, Scalar(0, 255, 0), -1, 8);
 
 				//circle(frame, points1[i], 3, Scalar(255, 0, 0), -1, 8);
@@ -117,7 +123,7 @@ int PyrLKTest() {
 
 		if (points1.size() > 8) {
 			Mat mask;
-			Mat H = findHomography(init, points2, RANSAC, 3.0, mask,2000,0.98);
+			Mat H = findHomography(init, points2, RANSAC, 3.0, mask, 2000, 0.98);
 
 			//warpPerspective(frame, frame, H, Size(640, 480));
 
@@ -138,19 +144,19 @@ int PyrLKTest() {
 				for (i = k = 0; i < mask.rows; i++)
 				{
 
-					if (!(int)mask.at<uchar>(i,0))
-						continue;
+				if (!(int)mask.at<uchar>(i,0))
+				continue;
 
-					points2[k] = points2[i];
-					points1[k] = points1[i];
-					init[k] = init[i];
-					k++;
-					//kpts1.push_back(KeyPoint(points1[i], 1.f));
-					//kpts2.push_back(KeyPoint(points2[i], 1.f));
+				points2[k] = points2[i];
+				points1[k] = points1[i];
+				init[k] = init[i];
+				k++;
+				//kpts1.push_back(KeyPoint(points1[i], 1.f));
+				//kpts2.push_back(KeyPoint(points2[i], 1.f));
 
-					circle(frame, points2[i], 3, Scalar(0, 255, 0), -1, 8);
+				circle(frame, points2[i], 3, Scalar(0, 255, 0), -1, 8);
 
-					//circle(frame, points1[i], 3, Scalar(255, 0, 0), -1, 8);
+				//circle(frame, points1[i], 3, Scalar(255, 0, 0), -1, 8);
 				}
 				points1.resize(k);
 				points2.resize(k);
@@ -204,32 +210,35 @@ int PyrLKTest() {
 
 				poseplot.setTo(cv::Scalar(0, 0, 0));
 				//Mat T = pose.col(3);
-				Mat TT = t[0];
+				TT = t[0];
 				int idx = 0;
 				if (t.size() > 1){
 					for (int i = 0; i < 4; i++) {
-						if (N[i].at<double>(2, 0) >= N[idx].at<double>(2, 0)){
+						if (N[i].at<double>(2, 0) <= N[idx].at<double>(2, 0)){
 							idx = i;
 						}
 					}
 					TT = t[idx];
+					RR = R[idx];
 				}
-
 				char buff1[50];
 				int fontFace = QT_FONT_NORMAL;
 				double fontScale = 0.5f;
 				int thickness = 1;
-				for (int i = 0; i < 4; i++) {
-					sprintf(buff1, "%d:[%+.1f %+.1f %+.1f]  [%+.1f %+.1f %+.1f] %+.2f\n", i,
-						t[i].at<double>(0, 0), t[i].at<double>(1, 0), t[i].at<double>(2, 0),
-						N[i].at<double>(0, 0), N[i].at<double>(1, 0), N[i].at<double>(2, 0), c1);
-					string text(buff1);
 
-					putText(poseplot, text, Point(0, 20+i*20), fontFace, fontScale, Scalar::all(255), thickness, 8);
+				if (t.size() > 1){
+					for (int i = 0; i < 4; i++) {
+						sprintf(buff1, "%d:[%+.1f %+.1f %+.1f]  [%+.1f %+.1f %+.1f] %+.2f\n", i,
+							t[i].at<double>(0, 0), t[i].at<double>(1, 0), t[i].at<double>(2, 0),
+							N[i].at<double>(0, 0), N[i].at<double>(1, 0), N[i].at<double>(2, 0), c1);
+						string text(buff1);
+
+						putText(poseplot, text, Point(0, 20 + i * 20), fontFace, fontScale, Scalar::all(255), thickness, 8);
+					}
 				}
 
 				//printf("x: %.2f y: %.2f z: %.2f\n", TT.at<double>(0, 0), TT.at<double>(1, 0), TT.at<double>(2, 0));
-				circle(poseplot, Point(200 + TT.at<double>(0, 0) * 100, 200 + TT.at<double>(1, 0) * 100), 2, Scalar(0, abs(TT.at<double>(2, 0))*150 + 100, 0));
+				circle(poseplot, Point(200 + TT.at<double>(0, 0) * 100, 200 + TT.at<double>(1, 0) * 100), 2, Scalar(0, abs(TT.at<double>(2, 0)) * 150 + 100, 0));
 
 				//printf("%d\n",t.size());
 
@@ -263,7 +272,7 @@ int PyrLKTest() {
 
 		int key = waitKey(15);
 		//points1.size() < initPoints / 2 ||
-		if ( key == ' ') {
+		if (key == ' ') {
 			// features and keypoints for object
 			sH = Mat::eye(3, 3, CV_64F);
 			img1 = grey.clone();
@@ -283,7 +292,21 @@ int PyrLKTest() {
 		else if (key == 'q') {
 			break;
 		}
+		if (TT.rows > 0) {
+			Mat fD = (Mat_<double>(3, 1) << 0, 0, 1);
+			Mat tmp = TT + (RR.inv())*fD;// R*fD;
+			Vec3d cam_pos(TT), cam_focal_point(tmp), cam_y_dir(0.0f, -1.0f, 0.0f);
+			/// We can get the pose of the cam using makeCameraPose
+			Affine3f cam_pose = viz::makeCameraPose(cam_pos, cam_focal_point, cam_y_dir);
 
+			viz::WCameraPosition cpw(0.5); // Coordinate axes
+			viz::WCameraPosition cpw_frustum(Vec2f(0.889484, 0.523599)); // Camera frustum
+			myWindow.showWidget("CPW", cpw, cam_pose);
+			myWindow.showWidget("CPW_FRUSTUM", cpw_frustum, cam_pose);
+			myWindow.showWidget("img1", viz::WImage3D(img1, Size2d(1.0, 1.0), Vec3d(0, 0.0, 2.0), Vec3d(0.0, 0.0, 1.0), Vec3d(0.0, 1.0, 0.0)));
+		}
+
+		myWindow.spinOnce(1, true);
 		imshow("pose", poseplot);
 	}
 	return 0;

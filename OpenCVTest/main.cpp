@@ -3,12 +3,12 @@
 
 int main() {
 	//PyrLKTest();
-	//RunOrb();
+	RunOrb();
   //      cameraPose();
 	//PyrLKod();
 	//PNPOrb();
 	//VOOrb();
-	KFVOOrb();
+	//KFVOOrb();
 	//pnp2d3d();
 	//PyrLKTest();
 }
