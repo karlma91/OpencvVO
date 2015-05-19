@@ -39,6 +39,9 @@
     <ClCompile Include="KFVOORB.cpp">
       <Filter>Source Files</Filter>
     </ClCompile>
+    <ClCompile Include="pnp2d3dvo.cpp">
+      <Filter>Source Files</Filter>
+    </ClCompile>
   </ItemGroup>
   <ItemGroup>
     <ClInclude Include="Tests.h">

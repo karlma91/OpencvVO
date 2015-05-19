@@ -13,6 +13,7 @@ int cameraPose();
 int PNPOrb();
 int VOOrb();
 int KFVOOrb();
+int pnp2d3d();
 
 #endif 
 

@@ -12,7 +12,7 @@ using namespace std;
 #include <opencv2/viz.hpp>
 #include "Tests.h"
 
-static int MAX_FEATURES = 2000;
+static int MAX_FEATURES = 400;
 static vector<KeyPoint> kpts1, kpts2;
 static std::vector<DMatch> matches;
 static Mat desc1, desc2;
@@ -65,8 +65,10 @@ static VideoCapture stream1("C:\\Users\\Karlmka\\Dropbox\\unik4690\\20150515_172
 static vector<uchar> status;
 static vector<float> err;
 static Mat E;
-//static Ptr<ORB> detector;
-static Ptr<ORB> descriptor;
+static Ptr<ORB> descriptor = ORB::create();
+//static Ptr<ORB> detector = ORB::create();
+//static Ptr<AKAZE> descriptor = AKAZE::create();
+//static Ptr<AKAZE> detector = AKAZE::create();
 static Ptr<FastFeatureDetector> detector = FastFeatureDetector::create();
 //Ptr<AKAZE> akaze = AKAZE::create();
 //akaze->set("threshold", akaze_thresh);
@@ -98,6 +100,8 @@ static void triangulate_points(Mat CM0, Mat CM1, vector<Point2f> poi1, vector<Po
 }
 
 static void loop() {
+	stream1.read(frame);
+	stream1.read(frame);
 	stream1.read(frame);
 	stream1.read(frame);
 	//resize(frame, frame, Size(frame.cols*0.8, frame.rows*0.8));
@@ -150,7 +154,7 @@ static void loop() {
 				points2.resize(k);
 				init.resize(k);*/
 
-				if (good_matches.size() > 10 && init.size() > 6) {
+				if (good_matches.size() > 10 && init.size() > 6 && avg_dist > 10) {
 
 					float f = K.at<double>(0, 0);
 					Point2f pp(K.at<double>(0, 2), K.at<double>(1, 2));
@@ -158,7 +162,6 @@ static void loop() {
 					int inliers = recoverPose(E, init, points2, R, T, f, pp, mask);
 					if (inliers > 5){
 						hconcat(R, T, M1);
-
 
 						cv::Mat row = cv::Mat::zeros(1, 4, CV_64F);
 						row.at<double>(0, 3) = 1;
@@ -176,7 +179,7 @@ static void loop() {
 								
 							}
 						}
-						if (ny1.size() > 0){
+						/*if (ny1.size() > 0){
 							hconcat(R, T, M1);
 							triangulate_points(K*M0, K*M1, ny1, ny2, &init3dpoints);
 							for (int i = 0; i < (int)init3dpoints.size(); i++) {
@@ -195,7 +198,7 @@ static void loop() {
 									allColors.push_back(col);
 								}
 							}
-						}
+						}*/
 
 						camposes.push_back(Point3f(totalT.at<double>(0, 3), totalT.at<double>(1, 3), totalT.at<double>(2, 3)));
 						//camposes.push_back(Point3f(totalT.at<double>(1, 3), totalT.at<double>(2, 3), 0));
@@ -245,12 +248,12 @@ static void loop() {
 	}
 	if (camposes.size() > 0) {
 		viz::WCloud cw(camposes);
-		Mat testt(totalmap);
-		viz::WCloud cws(testt, allColors);
+		//Mat testt(totalmap);
+		//viz::WCloud cws(testt, allColors);
 		cw.setRenderingProperty(viz::POINT_SIZE, 5);
-		cws.setRenderingProperty(viz::POINT_SIZE, 3);
+		//cws.setRenderingProperty(viz::POINT_SIZE, 3);
 		myWindow.showWidget("CloudWidget1", cw);
-		myWindow.showWidget("CloudWidget2", cws);
+		//myWindow.showWidget("CloudWidget2", cws);
 	}
 
 	myWindow.spinOnce(1, true);
@@ -261,7 +264,7 @@ int KFVOOrb() {
 		cout << "cannot open camera";
 	}
 	// read camera matrix
-	FileStorage fs("C:/Users/Karlmka/Dropbox/unik4690/Kamerakalibrering/camera.yml", FileStorage::READ);
+	FileStorage fs("C:/Users/Karlmka/Dropbox/unik4690/Kamerakalibrering/camera2.yml", FileStorage::READ);
 	fs["camera_matrix"] >> K;
 	fs.release();
 	printf("K matrix: \n");
@@ -270,7 +273,7 @@ int KFVOOrb() {
 
 	//detector = ORB::create();
 	//detector->setMaxFeatures(1000);
-	descriptor = ORB::create();
+	//descriptor = ORB::create();
 
 	/// Add coordinate axes
 	myWindow.showWidget("Coordinate Widget", viz::WCoordinateSystem());;

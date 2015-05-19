@@ -84,6 +84,7 @@
     <ClCompile Include="KFVOORB.cpp" />
     <ClCompile Include="main.cpp" />
     <ClCompile Include="OrbTest.cpp" />
+    <ClCompile Include="pnp2d3dvo.cpp" />
     <ClCompile Include="PNPOrb.cpp" />
     <ClCompile Include="PyrLKod.cpp" />
     <ClCompile Include="PyrLkTest.cpp" />

@@ -146,8 +146,8 @@ int RunOrb() {
             vector<Point2f> points;
             TermCriteria termcrit(TermCriteria::COUNT | TermCriteria::EPS, 20, 0.03);
             goodFeaturesToTrack(img1, points, 500, 0.01, 30, Mat(), 3, 0, 0.04);
-            Size subPixWinSize(10, 10);
-            cornerSubPix(img1, points, subPixWinSize, Size(-1, -1), termcrit);
+            //Size subPixWinSize(10, 10);
+            //cornerSubPix(img1, points, subPixWinSize, Size(-1, -1), termcrit);
             for (size_t i = 0; i < points.size(); i++) {
                 kpts1.push_back(cv::KeyPoint(points[i], 1.f));
             }
@@ -157,7 +157,7 @@ int RunOrb() {
             drawKeypoints(img1, kpts1, temp, Scalar(0, 0, 255));
             imshow("obj", temp);
             //resize(img1, img1, Size(img1.cols/2, img1.rows));
-            detector->detect(img1, kpts1);
+           // detector->detect(img1, kpts1);
             descriptor->compute(img1, kpts1, desc1);
             drawKeypoints(img1, kpts1, img1);
         }
