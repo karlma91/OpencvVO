@@ -41,7 +41,7 @@ static int MAX_FEATURES = 500;
 static vector<KeyPoint> kpts1, kpts2;
 static std::vector<DMatch> matches;
 
-static VideoCapture stream1(0);   //0 is the id of video device.0 if you have only one camera.
+static VideoCapture stream1(1);   //0 is the id of video device.0 if you have only one camera.
 
 void cameraPoseFromHomography(const Mat& H, Mat& pose)
 {
@@ -72,7 +72,6 @@ void cameraPoseFromHomography(const Mat& H, Mat& pose)
 
 int PyrLKTest() {
 
-  
   Mat desc1, desc2;
   int picture_taken = 0;
   //BFMatcher matcher(NORM_HAMMING);
@@ -80,6 +79,10 @@ int PyrLKTest() {
 
   Mat R = Mat::eye(3, 3, CV_64F);
   Mat t(3, 1, CV_64F);
+
+  //Mat totalR = Mat::eye(3, 3, CV_64F);
+  //Mat totalT(3, 1, CV_64F);
+  
   Mat sH = Mat::eye(3, 3, CV_64F);
 
   Mat tempH =  Mat::eye(3, 3, CV_64F);
@@ -90,7 +93,7 @@ int PyrLKTest() {
     cout << "cannot open camera" << endl;
   }
 
-  FileStorage fs("camera.yml", FileStorage::READ);
+  FileStorage fs("../camera.yml", FileStorage::READ);
   fs["camera_matrix"] >> K;
   fs.release();
 
@@ -114,11 +117,6 @@ int PyrLKTest() {
       Mat mask;
       H = findHomography(init, points2, RANSAC, 3.0, mask,2000,0.98);
 
-      // if (totalH.empty()) {
-      //   H.copyTo(totalH);
-      // }
-      //warpPerspective(frame, frame, H, Size(640, 480));
-
       if (!H.empty() && determinant(H) > 0.001){
         extractRTfromH(H, R, t);
         plotCorners();
@@ -134,7 +132,7 @@ int PyrLKTest() {
     cv::swap(prevGray, grey);
 
     int key = waitKey(15);
-    //points1.size() < initPoints / 2 ||
+
     if ( key == ' ') {
       // features and keypoints for object
       sH = Mat::eye(3, 3, CV_64F);
@@ -150,19 +148,37 @@ int PyrLKTest() {
       break;
     }
 
-    if (points1.size() < initialPointCount / 2) {
-        tempH = H*totalH;
-        
-        updateTotalT(totalT, R, t);
-        totalH = tempH; // Update total homography transform. 
-        
-        initNewFeatures();
-        //std::swap(points2, points1);
-    }
+    /**
+       Store current camera position/rotation and reset feature points
+       to track
+    */
+   
     if (!t.empty() && img1.rows > 0) {
+      //      Mat R = totalT.rowRange(0,2).colRange(0,);
+
+      print(t);
+      cout << endl;
+
+      Mat totT;
+      totalT.copyTo(totT);
+      updateTotalT(totT, R, t);
+
+      Mat R = totT.rowRange(0,3).colRange(0,3);
+      Mat t = totT.col(3).rowRange(0,3);
+
+      cout << "t vector is: "<< endl;
+      print(t);
+      cout << endl;
+
+      cout << "R mat is: "<< endl;
+      print(R);
+      cout << endl;
+      
       Mat fD = (Mat_<double>(3, 1) << 0, 0, 1);
       Mat tmp = t + (R.inv())*fD;// R*fD;
-      Vec3d cam_pos(t), cam_focal_point(tmp), cam_y_dir(0.0f, -1.0f, 0.0f);
+      Vec3d cam_pos(t);
+      Vec3d cam_focal_point(tmp);
+      Vec3d cam_y_dir(0.0f, -1.0f, 0.0f);
       /// We can get the pose of the cam using makeCameraPose
       Affine3f cam_pose = viz::makeCameraPose(cam_pos, cam_focal_point, cam_y_dir);
 
@@ -171,6 +187,21 @@ int PyrLKTest() {
       myWindow.showWidget("CPW", cpw, cam_pose);
       myWindow.showWidget("CPW_FRUSTUM", cpw_frustum, cam_pose);
       myWindow.showWidget("img1", viz::WImage3D(img1, Size2d(1.0, 1.0), Vec3d(0, 0.0, 2.0), Vec3d(0.0, 0.0, 1.0), Vec3d(0.0, 1.0, 0.0)));
+    }
+
+    // Couldn't find homography, so reset the feature points. 
+    /* if (H.empty()) {
+      initNewFeatures();
+    }
+    else */if(points1.size() < initialPointCount / 2) {
+      tempH = H*totalH;
+
+      
+      updateTotalT(totalT, R, t);
+      totalH = tempH; // Update total homography transform. 
+        
+      initNewFeatures();
+      //std::swap(points2, points1);
     }
     
     myWindow.spinOnce(1, true);
@@ -248,7 +279,7 @@ void extractRTfromH(Mat& H, Mat& Rot, Mat& Trans) {
   vector<Mat> R;
   vector<Mat> t;
   vector<Mat> N;
-
+  
   decomposeHomographyMat(H, K, R, t, N);
 
   Mat M0 = Mat::eye(3, 4, CV_64F);
@@ -277,7 +308,7 @@ void extractRTfromH(Mat& H, Mat& Rot, Mat& Trans) {
   int idx = 0;
   if (t.size() > 1){
     for (int i = 0; i < 4; i++) {
-      if (N[i].at<double>(2, 0) >= N[idx].at<double>(2, 0)){
+      if (N[i].at<double>(2, 0) <= N[idx].at<double>(2, 0)){
         idx = i;
       }
     }
