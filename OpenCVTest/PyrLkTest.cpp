@@ -13,6 +13,17 @@
 using namespace cv;
 using namespace std;
 
+
+struct keyframe {
+	Mat img; // image
+	Mat desc; // descriotors for image
+	vector<KeyPoint> kpts; // keypoints for image
+	Mat H; // homograpy from previous keyframe
+	Vec3d imgpos; // position for image
+	Mat C; // camera matrix
+};
+
+
 void extractRTfromH(Mat& H, Mat& Rot, Mat& Trans);
 void trackNextFrame();
 void updateTotalT(Mat& totalT, Mat &R, Mat &t);
@@ -29,19 +40,20 @@ static Mat grey;
 static Mat frame, img_matches;
 static Mat temp, prevGray;
 static Mat K;
-static Mat H;
+static Mat H = Mat::eye(3, 3, CV_64F);
+
 
 static int initialPointCount = 0;
 
 static Mat totalT = Mat::eye(4, 4, CV_64F);
-static Mat totalH  = Mat::eye(3, 3, CV_64F);;
+static Mat totalH  = Mat::eye(3, 3, CV_64F);
 static Mat poseplot = Mat::zeros(400, 400, CV_8UC3);
 
 static int MAX_FEATURES = 500;
 static vector<KeyPoint> kpts1, kpts2;
 static std::vector<DMatch> matches;
 
-static VideoCapture stream1(1);   //0 is the id of video device.0 if you have only one camera.
+
 
 void cameraPoseFromHomography(const Mat& H, Mat& pose)
 {
@@ -72,6 +84,10 @@ void cameraPoseFromHomography(const Mat& H, Mat& pose)
 
 int PyrLKTest() {
 
+  vector<keyframe> keyframes;
+  
+  VideoCapture stream1(1);   //0 is the id of video device.0 if you have only one camera.
+  
   Mat desc1, desc2;
   int picture_taken = 0;
   //BFMatcher matcher(NORM_HAMMING);
@@ -84,7 +100,6 @@ int PyrLKTest() {
   //Mat totalT(3, 1, CV_64F);
   
   Mat sH = Mat::eye(3, 3, CV_64F);
-
   Mat tempH =  Mat::eye(3, 3, CV_64F);
 
   static viz::Viz3d myWindow("VIZ");
@@ -117,7 +132,25 @@ int PyrLKTest() {
       Mat mask;
       H = findHomography(init, points2, RANSAC, 3.0, mask,2000,0.98);
 
+      
       if (!H.empty() && determinant(H) > 0.001){
+
+        size_t i, k;
+          for (i = k = 0; i < mask.rows; i++)
+          {
+
+          if (!(int)mask.at<uchar>(i,0))
+          continue;
+
+          points2[k] = points2[i];
+          points1[k] = points1[i];
+          init[k] = init[i];
+          k++;
+          }
+          points1.resize(k);
+          points2.resize(k);
+          init.resize(k);
+        
         extractRTfromH(H, R, t);
         plotCorners();
 
@@ -135,6 +168,8 @@ int PyrLKTest() {
 
     if ( key == ' ') {
       // features and keypoints for object
+      totalT = Mat::eye(4, 4, CV_64F);
+      totalH  = Mat::eye(3, 3, CV_64F);
       sH = Mat::eye(3, 3, CV_64F);
 
       initNewFeatures();
@@ -144,6 +179,44 @@ int PyrLKTest() {
       //imshow("obj", temp);
       //drawKeypoints(img1, kpts1, img1);
     }
+
+    else if (key == 'k') {
+      keyframe key = keyframe();
+      key.img = img1.clone();
+      if (keyframes.size() == 0){
+        key.imgpos = Vec3d(0, 0, 0);
+        key.H = Mat::eye(3, 3, CV_64F);
+        key.C = Mat::eye(3, 4, CV_64F);
+      }else{
+        /*Mat M1;
+        hconcat(R, t, M1);
+        cv::Mat row = cv::Mat::zeros(1, 4, CV_64F);
+        row.at<double>(0, 3) = 1;
+        M1.push_back(row);*/
+        key.C = totalT.clone();
+        //totalT = totalT*M1;
+        key.imgpos = Vec3d(t);
+        //totalH = H*totalH;
+        
+        key.H = H*totalH;
+      }     
+      keyframes.push_back(key);
+
+      
+      std::vector<Point2f> inv_scene(3);
+      inv_scene[0] = cvPoint(0, 0);
+      inv_scene[1] = cvPoint(-key.img.cols / 2, -key.img.rows / 2);
+      inv_scene[2] = cvPoint(key.img.cols / 2, key.img.rows / 2);
+      vector<Point2f> inv_obj_corners(3);
+      Mat hh = key.H;
+      perspectiveTransform(inv_scene, inv_obj_corners, hh.inv());
+      float size_x = abs(inv_obj_corners[1].x - inv_obj_corners[2].x) / key.img.cols;
+      float size_y = abs(inv_obj_corners[1].y - inv_obj_corners[2].y) / key.img.cols;
+      float pos_x = inv_obj_corners[0].x / key.img.cols;
+      float pos_y = inv_obj_corners[0].y / key.img.cols;
+      myWindow.showWidget("img1" + keyframes.size(), viz::WImage3D(key.img, Size2d(size_x , size_y ), Vec3d(pos_x , pos_y , 1.0), Vec3d(0, 0, 1.0), Vec3d(0.0, 1.0, 0.0)));
+    }
+    
     else if (key == 'q') {
       break;
     }
@@ -154,25 +227,22 @@ int PyrLKTest() {
     */
    
     if (!t.empty() && img1.rows > 0) {
-      //      Mat R = totalT.rowRange(0,2).colRange(0,);
 
-      print(t);
-      cout << endl;
-
+      // Make local copy of the total transformation. 
       Mat totT;
       totalT.copyTo(totT);
-      updateTotalT(totT, R, t);
+      //updateTotalT(totT, R, t);
 
-      Mat R = totT.rowRange(0,3).colRange(0,3);
-      Mat t = totT.col(3).rowRange(0,3);
+      R = totT.rowRange(0,3).colRange(0,3);
+      t = totT.col(3).rowRange(0,3);
 
-      cout << "t vector is: "<< endl;
-      print(t);
-      cout << endl;
+      // cout << "t vector is: "<< endl;
+      // print(t);
+      // cout << endl;
 
-      cout << "R mat is: "<< endl;
-      print(R);
-      cout << endl;
+      // cout << "R mat is: "<< endl;
+      // print(R);
+      // cout << endl;
       
       Mat fD = (Mat_<double>(3, 1) << 0, 0, 1);
       Mat tmp = t + (R.inv())*fD;// R*fD;
@@ -189,17 +259,30 @@ int PyrLKTest() {
       myWindow.showWidget("img1", viz::WImage3D(img1, Size2d(1.0, 1.0), Vec3d(0, 0.0, 2.0), Vec3d(0.0, 0.0, 1.0), Vec3d(0.0, 1.0, 0.0)));
     }
 
+    
+
     // Couldn't find homography, so reset the feature points. 
-    /* if (H.empty()) {
+    if (H.empty()) {
       initNewFeatures();
     }
-    else */if(points1.size() < initialPointCount / 2) {
+    else if(points1.size() < initialPointCount / 2) {
       tempH = H*totalH;
-
       
       updateTotalT(totalT, R, t);
       totalH = tempH; // Update total homography transform. 
-        
+
+      cout << "R is: " << endl;
+      print(R);
+      cout << endl;
+
+      cout << "t is: " << endl;
+      print(t);
+      cout << endl;
+      
+      cout << "totalT is: " << endl;
+      print(totalT);
+      cout << endl;
+      
       initNewFeatures();
       //std::swap(points2, points1);
     }
@@ -229,14 +312,14 @@ void initNewFeatures() {
   initialPointCount = init.size();
 }
 
-void updateTotalT(Mat& totalT, Mat &R, Mat &t) {
+void updateTotalT(Mat& tT, Mat &R, Mat &t) {
   Mat M1 = Mat::eye(3, 4, CV_64F);
   cv::Mat row = cv::Mat::zeros(1, 4, CV_64F);
   hconcat(R, t, M1);  
   row.at<double>(0, 3) = 1;
   M1.push_back(row);
   //print(M1);
-  totalT = totalT*M1;
+  tT = tT*M1;
 }
 
 void trackNextFrame() {
@@ -305,6 +388,8 @@ void extractRTfromH(Mat& H, Mat& Rot, Mat& Trans) {
   poseplot.setTo(cv::Scalar(0, 0, 0));
   //Mat T = pose.col(3);
   Trans = t[0];
+  Rot = R[0];
+  
   int idx = 0;
   if (t.size() > 1){
     for (int i = 0; i < 4; i++) {
@@ -349,4 +434,27 @@ void plotCorners() {
   line(frame, scene_corners[1], scene_corners[2], Scalar(0, 255, 0), 4);
   line(frame, scene_corners[2], scene_corners[3], Scalar(0, 255, 0), 4);
   line(frame, scene_corners[3], scene_corners[0], Scalar(0, 255, 0), 4);
+
+  // Try yo draw some 3D points. 
+  // Mat totT;
+  // totalT.copyTo(totT);
+  // updateTotalT(totT, R, t);
+
+  // Mat R = totT.rowRange(0,3).colRange(0,3);
+  // Mat t = totT.col(3).rowRange(0,3);
+  
+  // std::vector<Point3f> obj_points(8);
+  // std::vector<Point2f> img_points(8);
+  // obj_points[0] = Point3f(0, 0, 0);
+  // obj_points[1] = Point3f(0, 0, 1);
+  // obj_points[2] = Point3f(1, 0, 0);
+  // obj_points[3] = Point3f(0, 1, 0);
+          
+  // projectPoints(obj_points, R, t, K, NULL, img_points);
+
+  // line(frame, img_points[0], img_points[1], Scalar(255, 0 ,0), 4);
+  // line(frame, img_points[1], img_points[2], Scalar(255, 0 ,0), 4);
+  // line(frame, img_points[2], img_points[3], Scalar(255, 0 ,0), 4);
+  // line(frame, img_points[3], img_points[0], Scalar(255, 0 ,0), 4);
+  
 }
