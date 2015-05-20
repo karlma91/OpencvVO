@@ -33,7 +33,7 @@ void plotCorners();
 vector<Point2f> points1, points2, init;
 TermCriteria termcrit(TermCriteria::COUNT | TermCriteria::EPS, 200, 0.03);
 Size subPixWinSize(10, 10);
-Size winSize(15, 15); // 31
+Size winSize(25, 25); // 31
 
 static Mat img1;
 static Mat grey;
@@ -151,7 +151,8 @@ int PyrLKTest() {
           points2.resize(k);
           init.resize(k);
         
-        extractRTfromH(H, R, t);
+        extractRTfromH(H, R, t);      
+        
         plotCorners();
 
       }
@@ -231,10 +232,10 @@ int PyrLKTest() {
       // Make local copy of the total transformation. 
       Mat totT;
       totalT.copyTo(totT);
-      //updateTotalT(totT, R, t);
+      updateTotalT(totT, R, t);
 
-      R = totT.rowRange(0,3).colRange(0,3);
-      t = totT.col(3).rowRange(0,3);
+      Mat tR = totT.rowRange(0,3).colRange(0,3);
+      Mat tt = totT.col(3).rowRange(0,3);
 
       // cout << "t vector is: "<< endl;
       // print(t);
@@ -245,8 +246,8 @@ int PyrLKTest() {
       // cout << endl;
       
       Mat fD = (Mat_<double>(3, 1) << 0, 0, 1);
-      Mat tmp = t + (R.inv())*fD;// R*fD;
-      Vec3d cam_pos(t);
+      Mat tmp = tt + (tR.inv())*fD;// R*fD;
+      Vec3d cam_pos(tt);
       Vec3d cam_focal_point(tmp);
       Vec3d cam_y_dir(0.0f, -1.0f, 0.0f);
       /// We can get the pose of the cam using makeCameraPose
@@ -267,9 +268,6 @@ int PyrLKTest() {
     }
     else if(points1.size() < initialPointCount / 2) {
       tempH = H*totalH;
-      
-      updateTotalT(totalT, R, t);
-      totalH = tempH; // Update total homography transform. 
 
       cout << "R is: " << endl;
       print(R);
@@ -279,6 +277,11 @@ int PyrLKTest() {
       print(t);
       cout << endl;
       
+      
+      updateTotalT(totalT, R, t);
+      totalH = tempH; // Update total homography transform. 
+            
+     
       cout << "totalT is: " << endl;
       print(totalT);
       cout << endl;
